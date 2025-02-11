@@ -40,7 +40,15 @@ class Dominions(commands.Cog, name="dominions"):
                     if 'next_turn' in game_info:
                         embed.add_field(name="Next Turn", value=game_info['next_turn'], inline=False)
                     
-                    players_status = "\n".join([f"{player.get('nation_name', 'Unknown')}: **{player.get('status', 'Unknown')}**" for player in players_data])
+                    status_emojis = {
+                        "submitted": ":ballot_box_with_check:",
+                        "unsubmitted": ":x:",
+                        "computer": ":desktop:",
+                        "unfinished": ":warning:",
+                        "dead": ":headstone:"
+                    }
+                    
+                    players_status = "\n".join([f"{status_emojis.get(player.get('status', 'Unknown').lower(), ':question:')}: {player.get('nation_name', 'Unknown')}" for player in players_data])
                     embed.add_field(name="**Players**", value=players_status, inline=False)
                 else:
                     embed = discord.Embed(
@@ -89,7 +97,16 @@ class Dominions(commands.Cog, name="dominions"):
                                 embed.add_field(name="Game Address", value=game_info['address'], inline=False)
                             if 'next_turn' in game_info:
                                 embed.add_field(name="Next Turn", value=game_info['next_turn'], inline=False)
-                            players_status = "\n".join([f"{player.get('nation_name', 'Unknown')}: {player.get('status', 'Unknown')}" for player in players_data])
+                            
+                            status_emojis = {
+                                "submitted": ":ballot_box_with_check:",
+                                "unsubmitted": ":x:",
+                                "computer": ":desktop:",
+                                "unfinished": ":warning:",
+                                "dead": ":headstone:"
+                            }
+                            
+                            players_status = "\n".join([f"{status_emojis.get(player.get('status', 'Unknown').lower(), ':question:')}: {player.get('nation_name', 'Unknown')}" for player in players_data])
                             embed.add_field(name="**Players**", value=players_status, inline=False)
                             await context.send(content="@here", embed=embed)
                     await asyncio.sleep(180)  # Wait for 3 minutes

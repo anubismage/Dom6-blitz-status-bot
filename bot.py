@@ -204,7 +204,7 @@ class DiscordBot(commands.Bot):
                 
             for guild_id in guild_ids:
                 guild = discord.Object(id=guild_id)
-                #self.tree.copy_global_to(guild=guild)
+                self.tree.copy_global_to(guild=guild)
                 synced = await self.tree.sync(guild=guild)
                 self.logger.info(f"Synced {len(synced)} command(s) to guild ID: {guild_id}")
         except Exception as e:

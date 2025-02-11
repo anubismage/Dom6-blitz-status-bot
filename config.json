@@ -1,4 +1,9 @@
 {
   "prefix": "d!",
-  "invite_link": "YOUR_BOT_INVITE_LINK_HERE"
+  "invite_link": "YOUR_BOT_INVITE_LINK_HERE",
+  "application_id": "1337590666062204990",
+  "guild_ids": [
+    340519937728577548,
+    1177520036072656927
+    ]
 }

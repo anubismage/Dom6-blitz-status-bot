@@ -1,5 +1,3 @@
-
-
 import json
 import logging
 import os
@@ -122,6 +120,7 @@ class DiscordBot(commands.Bot):
             command_prefix=commands.when_mentioned_or(config["prefix"]),
             intents=intents,
             help_command=None,
+            application_id=config["application_id"],
         )
         """
         This creates custom bot variables so that we can access these variables in cogs more easily.
@@ -195,6 +194,21 @@ class DiscordBot(commands.Bot):
                 f"{os.path.realpath(os.path.dirname(__file__))}/database/database.db"
             )
         )
+        
+        # Sync commands for specific guilds
+        try:
+            guild_ids = self.config.get("guild_ids", [])
+            if not guild_ids:
+                self.logger.warning("No guild IDs configured for command registration")
+                return
+                
+            for guild_id in guild_ids:
+                guild = discord.Object(id=guild_id)
+                #self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                self.logger.info(f"Synced {len(synced)} command(s) to guild ID: {guild_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to sync commands: {e}")
 
     async def on_message(self, message: discord.Message) -> None:
         """

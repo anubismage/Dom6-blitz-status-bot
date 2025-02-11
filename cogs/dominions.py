@@ -108,8 +108,37 @@ class Dominions(commands.Cog, name="dominions"):
                         "dead": ":headstone:"
                     }
                     
-                    players_status = "\n".join([f"{status_emojis.get(player.get('status', 'Unknown').lower(), ':question:')}: {player.get('nation_name', 'Unknown')} {self.registered_players.get(game_id, {}).get(player.get('nation_name', 'Unknown'), '')}" for player in players_data])
-                    embed.add_field(name="**Players**", value=players_status, inline=False)
+                    # Count players by status
+                    status_counts = {
+                        "submitted": 0,
+                        "unsubmitted": 0,
+                        "computer": 0,
+                        "unfinished": 0,
+                        "dead": 0
+                    }
+
+                    # Create player list excluding computer and dead nations
+                    player_list = []
+                    for player in players_data:
+                        status = player.get('status', 'Unknown').lower()
+                        status_counts[status] = status_counts.get(status, 0) + 1
+                        
+                        # Only add to player list if not computer or dead
+                        if status not in ['computer', 'dead']:
+                            nation_name = player.get('nation_name', 'Unknown')
+                            player_mention = self.registered_players.get(game_id, {}).get(nation_name, '')
+                            player_list.append(f"{status_emojis.get(status, ':question:')} {nation_name} {player_mention}")
+
+                    # Create status summary
+                    status_summary = []
+                    for status, count in status_counts.items():
+                        if count > 0:
+                            status_summary.append(f"{status_emojis[status]} {count}")
+                    
+                    embed.add_field(name="**Status Summary**", value=" | ".join(status_summary), inline=False)
+                    
+                    if player_list:
+                        embed.add_field(name="**Active Players**", value="\n".join(player_list), inline=False)
                 else:
                     embed = discord.Embed(
                         title="Error!",
@@ -196,12 +225,16 @@ class Dominions(commands.Cog, name="dominions"):
                     async with session.get(url) as request:
                         if request.status != 200:
                             await context.send(f"Stopped watching game {game_id} due to request error.")
+                            self.watch_tasks.pop(game_id, None)
+                            self.current_status.pop(game_id, None)
                             break
                         data = await request.text()
                         lobby_name, players_data, game_info = extract_status_data(data)
                         new_status = game_info.get('status', 'Unknown')
                         if new_status == 'Unknown' or 'Won' in new_status:
                             await context.send(f"Stopped watching game {game_id} due to game status: {new_status}.")
+                            self.watch_tasks.pop(game_id, None)
+                            self.current_status.pop(game_id, None)
                             break
                         if game_id not in self.current_status:
                             self.current_status[game_id] = new_status

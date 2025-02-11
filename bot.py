@@ -163,9 +163,17 @@ class DiscordBot(commands.Bot):
     @tasks.loop(minutes=1.0)
     async def status_task(self) -> None:
         """
-        Setup the game status task of the bot.
+        Setup the game status task of the bot from status_messages.txt file.
         """
-        statuses = ["Hiding in your wifi", "Buying Maple Syrup", "We need to cook"]
+        try:
+            with open(f"{os.path.realpath(os.path.dirname(__file__))}/status_messages.txt", "r") as f:
+                statuses = [line.strip() for line in f if line.strip()]
+            if not statuses:
+                statuses = ["Bot is online"]  # Default fallback if file is empty
+        except FileNotFoundError:
+            self.logger.warning("status_messages.txt not found, using default status")
+            statuses = ["Bot is online"]
+            
         await self.change_presence(activity=discord.Game(random.choice(statuses)))
 
     @status_task.before_loop

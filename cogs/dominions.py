@@ -4,73 +4,66 @@ import discord
 from discord.ext import commands, tasks
 from discord.ext.commands import Context
 from status.capture_status import extract_status_data
-
+from views.PlayerSelectView import PlayerSelectView
+import os
+import json
+from datetime import datetime
 # Here we name the cog and create a new class for the cog.
-
-class PlayerSelectView(discord.ui.View):
-    def __init__(self, bot, game_id, nation_name, guild):
-        super().__init__()
-        self.bot = bot
-        self.game_id = game_id
-        self.nation_name = nation_name
-
-        # Create the select menu
-        select = discord.ui.Select(
-            placeholder="Select a player",
-            min_values=1,
-            max_values=1,
-            options=[
-                        discord.SelectOption(
-                            label=member.display_name,
-                            value=str(member.id),
-                            description=f"@{member.name}"
-                        ) for member in guild.members if not member.bot
-                    ][:25]  # Discord has a limit of 25 options
-        )
-
-        async def select_callback(interaction: discord.Interaction):
-            user_id = select.values[0]
-            user = interaction.guild.get_member(int(user_id))
-
-            # Get the Dominions cog instance
-            dominions_cog = self.bot.get_cog('dominions')
-            if dominions_cog is None:
-                await interaction.response.send_message(
-                    "Error: Could not access registration system.",
-                    ephemeral=True
-                )
-                return
-
-            # Register the player
-            if self.game_id not in dominions_cog.registered_players:
-                dominions_cog.registered_players[self.game_id] = {}
-            dominions_cog.registered_players[self.game_id][self.nation_name] = user.mention
-
-            # Send confirmation embed
-            confirm_embed = discord.Embed(
-                title="Registration Successful!",
-                color=0x2ecc71
-            )
-            confirm_embed.add_field(name="Game ID", value=self.game_id, inline=True)
-            confirm_embed.add_field(name="Nation", value=self.nation_name, inline=True)
-            confirm_embed.add_field(name="Player", value=user.mention, inline=True)
-
-            await interaction.response.edit_message(
-                content="Registration complete!",
-                embed=confirm_embed,
-                view=None
-            )
-
-        select.callback = select_callback
-        self.add_item(select)
 
 class Dominions(commands.Cog, name="dominions"):
     def __init__(self, bot) -> None:
         self.bot = bot
-        self.watch_tasks = {}
-        self.current_status = {}
-        self.registered_players = {}
+        self.data_folder = "data"
+        # Create data folder if it doesn't exist
+        if not os.path.exists(self.data_folder):
+            os.makedirs(self.data_folder)
+        
+        # Load saved data
+        self.watch_tasks = {}  # Can't load tasks directly
+        self.current_status = self.load_dict("current_status.json")
+        self.registered_players = self.load_dict("registered_players.json")
         self.custom_turn_message = "Your Game is ready for the next turn pretenders!"
+        
+        # Start auto-save task
+        self.auto_save.start()
+
+    def save_dict(self, data: dict, filename: str) -> None:
+        """Save dictionary to a JSON file."""
+        filepath = os.path.join(self.data_folder, filename)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            print(f"Error saving {filename}: {str(e)}")
+
+    def load_dict(self, filename: str) -> dict:
+        """Load dictionary from a JSON file."""
+        filepath = os.path.join(self.data_folder, filename)
+        try:
+            with open(filepath, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+        except json.JSONDecodeError:
+            print(f"Error decoding {filename}, starting with empty dict")
+            return {}
+
+    def save_all_data(self):
+        """Save all dictionaries to disk."""
+        # Don't save watch_tasks as they can't be serialized
+        self.save_dict(self.current_status, "current_status.json")
+        self.save_dict(self.registered_players, "registered_players.json")
+        print(f"Data auto-saved at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    @tasks.loop(minutes=5)
+    async def auto_save(self):
+        """Auto-save task that runs every 5 minutes."""
+        self.save_all_data()
+
+    def cog_unload(self):
+        """Called when the cog is unloaded."""
+        self.auto_save.cancel()
+        self.save_all_data()  # Save one last time when unloading
 
     # Here you can just add your own commands, you'll always need to provide "self" as first parameter.
 
@@ -105,7 +98,9 @@ class Dominions(commands.Cog, name="dominions"):
                         "unsubmitted": ":x:",
                         "computer": ":desktop:",
                         "unfinished": ":warning:",
-                        "dead": ":headstone:"
+                        "dead": ":headstone:",
+                        "Unknown": ":question:",
+                        "remove pretender": ":skull:"
                     }
                     
                     # Count players by status
@@ -291,6 +286,27 @@ class Dominions(commands.Cog, name="dominions"):
         """
         self.custom_turn_message = message
         await context.send(f"Custom turn message set to: {message}")
+
+    @commands.hybrid_command(
+        name="show_watching",
+        description="Shows a list of games currently being watched.",
+    )
+    async def show_watching(self, context: Context) -> None:
+        """
+        Shows a list of games currently being watched.
+
+        :param context: The application command context.
+        """
+        if not self.watch_tasks:
+            await context.send("No games are currently being watched.")
+            return
+
+        embed = discord.Embed(
+            title="Currently Watched Games",
+            color=0xD75BF4,
+            description="\n".join([f"• Game ID: {game_id}" for game_id in self.watch_tasks.keys()])
+        )
+        await context.send(embed=embed)
 
 
 # And then we finally add the cog to the bot so that it can load, unload, reload and use its content.

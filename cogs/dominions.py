@@ -8,6 +8,7 @@ from views.PlayerSelectView import PlayerSelectView
 import os
 import json
 from datetime import datetime
+import random
 # Here we name the cog and create a new class for the cog.
 
 class Dominions(commands.Cog, name="dominions"):
@@ -22,8 +23,10 @@ class Dominions(commands.Cog, name="dominions"):
         self.watch_tasks = {}  # Can't load tasks directly
         self.current_status = self.load_dict("current_status.json")
         self.registered_players = self.load_dict("registered_players.json")
-        self.custom_turn_message = "Your Game is ready for the next turn pretenders!"
+        self.custom_turn_message_list = self.load_text_file("turn_messages.txt")
+        self.custom_reminder_message = "Reminder: Less than 12 hours remaining for turn!"
         
+        self.reminder_hrs = 12
         # Start auto-save task
         self.auto_save.start()
 
@@ -47,12 +50,32 @@ class Dominions(commands.Cog, name="dominions"):
         except json.JSONDecodeError:
             print(f"Error decoding {filename}, starting with empty dict")
             return {}
+    
+    def load_text_file(self, filename: str) -> dict:
+        """Load lines from a Text file."""
+        filepath = os.path.join(self.data_folder, filename)
+        try:
+            with open(filepath, 'r') as f:
+                return f.readlines()
+        except FileNotFoundError:
+            return []
+    
+    def save_text_file(self, data: list, filename: str) -> None:
+        """Save lines to a Text file."""
+        filepath = os.path.join(self.data_folder, filename)
+        try:
+            with open(filepath, 'w') as f:
+                for line in data:
+                    f.write(f"{line}\n")
+        except Exception as e:
+            print(f"Error saving {filename}: {str(e)}")
 
     def save_all_data(self):
         """Save all dictionaries to disk."""
         # Don't save watch_tasks as they can't be serialized
         self.save_dict(self.current_status, "current_status.json")
         self.save_dict(self.registered_players, "registered_players.json")
+        self.save_text_file(self.custom_turn_message_list, "turn_messages.txt")
         print(f"Data auto-saved at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     @tasks.loop(minutes=5)
@@ -64,6 +87,25 @@ class Dominions(commands.Cog, name="dominions"):
         """Called when the cog is unloaded."""
         self.auto_save.cancel()
         self.save_all_data()  # Save one last time when unloading
+
+    # Add this helper function at the class level
+    def parse_time_string(self, time_str):
+        """Parse time string and return total hours as float."""
+        if time_str.lower() == "on submission":
+            return 0
+        
+        total_hours = 0
+        parts = time_str.lower().split(", ")
+        for part in parts:
+            value = float(part.split()[0])
+            unit = part.split()[1]
+            if "hour" in unit:
+                total_hours += value
+            elif "minute" in unit:
+                total_hours += value / 60
+            elif "day" in unit:
+                total_hours += value * 24
+        return total_hours
 
     # Here you can just add your own commands, you'll always need to provide "self" as first parameter.
 
@@ -216,6 +258,7 @@ class Dominions(commands.Cog, name="dominions"):
         async def watch_task():
             async with aiohttp.ClientSession() as session:
                 url = f"https://beta.blitzserver.net/game/{game_id}#status"
+                last_reminder_time = None
                 while True:
                     async with session.get(url) as request:
                         if request.status != 200:
@@ -226,15 +269,28 @@ class Dominions(commands.Cog, name="dominions"):
                         data = await request.text()
                         lobby_name, players_data, game_info = extract_status_data(data)
                         new_status = game_info.get('status', 'Unknown')
+                        next_turn = game_info.get('next_turn', '')
+
+                        # Check game status
                         if new_status == 'Unknown' or 'Won' in new_status:
                             await context.send(f"Stopped watching game {game_id} due to game status: {new_status}.")
                             self.watch_tasks.pop(game_id, None)
                             self.current_status.pop(game_id, None)
                             break
+
+                        # Process status changes
+                        status_changed = False
                         if game_id not in self.current_status:
-                            self.current_status[game_id] = new_status
-                        if new_status != self.current_status[game_id]:
-                            self.current_status[game_id] = new_status
+                            self.current_status[game_id] = {'status': new_status, 'next_turn': next_turn}
+                            status_changed = True
+                        elif new_status != self.current_status[game_id]['status']:
+                            self.current_status[game_id]['status'] = new_status
+                            self.current_status[game_id]['next_turn'] = next_turn
+                            status_changed = True
+
+                        # Send either status update or reminder, not both
+                        if status_changed:
+                            # Send status update
                             embed = discord.Embed(title=f'Lobby: {lobby_name}', color=0xD75BF4)
                             embed.add_field(name="Game Status", value=new_status, inline=False)
                             if 'address' in game_info:
@@ -242,12 +298,48 @@ class Dominions(commands.Cog, name="dominions"):
                             if 'next_turn' in game_info:
                                 embed.add_field(name="Next Turn", value=game_info['next_turn'], inline=False)
                         
-                            # Get the mentions of registered players
                             mentions = " ".join([mention for nation, mention in self.registered_players.get(game_id, {}).items()])
                             if not mentions:
                                 mentions = "@here"
-                            await context.send(content=self.custom_turn_message + mentions, embed=embed)
-                    await asyncio.sleep(60)
+                            message = random.choice(self.custom_turn_message_list) if self.custom_turn_message_list else "Turn has changed!"
+                            await context.send(content=f"{message} {mentions}", embed=embed)
+
+                        elif next_turn:  # Only check reminder if status hasn't changed
+                            hours_remaining = self.parse_time_string(next_turn)
+                            if self.reminder_hrs >= hours_remaining > 0 and not last_reminder_time:
+                                # Send reminder for unsubmitted players
+                                unsubmitted_players = []
+                                unregistered_unsubmitted = False
+                                for player in players_data:
+                                    if player.get('status', '').lower() != 'unsubmitted':
+                                        continue
+                                        
+                                    nation_name = player.get('nation_name', '')
+                                    player_mention = self.registered_players.get(game_id, {}).get(nation_name)
+                                    
+                                    if player_mention:
+                                        unsubmitted_players.append(player_mention)
+                                    else:
+                                        unregistered_unsubmitted = True
+                                        
+                                mentions = " ".join(unsubmitted_players)
+
+                                # Send status update
+                                embed = discord.Embed(title=f'Lobby: {lobby_name}', color=0xD75BF4)
+                                embed.add_field(name="Game Status", value=new_status, inline=False)
+                                if 'address' in game_info:
+                                    embed.add_field(name="Game Address", value=game_info['address'], inline=False)
+                                if 'next_turn' in game_info:
+                                    embed.add_field(name="Next Turn", value=game_info['next_turn'], inline=False)
+
+                                if unregistered_unsubmitted or not mentions:
+                                    mentions = "@here"
+                                reminder_msg = f"{self.custom_reminder_message} {mentions}"
+                                await context.send(reminder_msg, embed=embed)
+                                last_reminder_time = datetime.now()
+
+
+                    await asyncio.sleep(60) # Recommended to sleep for a minute to avoid rate limiting
 
         task = self.bot.loop.create_task(watch_task())
         self.watch_tasks[game_id] = task
@@ -273,19 +365,34 @@ class Dominions(commands.Cog, name="dominions"):
             await context.send(f"Not watching game {game_id}.")
         
     @commands.hybrid_command(
-    name="turn_message",
+    name="add_turn_message",
     description="Sets a custom turn message for a Dominions game by ID.",
     with_app_command=True
     )
-    async def turn_message(self, context: Context, message: str) -> None:
+    async def add_turn_message(self, context: Context, message: str) -> None:
         """
         Sets a custom turn message for a Dominions game
         :param context: The application command context.
 
         :param message: The custom turn message.
         """
-        self.custom_turn_message = message
-        await context.send(f"Custom turn message set to: {message}")
+        self.custom_turn_message_list.append(message)
+        await context.send(f"Added to Custom turn messages List: {message}")
+
+    @commands.hybrid_command(
+    name="change_reminder_message",
+    description="Sets a custom reminder message for a Dominions game by ID.",
+    with_app_command=True
+    )
+    async def reminder_message(self, context: Context, message: str) -> None:
+        """
+        Sets a custom reminder message for a Dominions game
+        :param context: The application command context.
+
+        :param message: The custom reminder message.
+        """
+        self.custom_reminder_message = message
+        await context.send(f"Changed Custom reminder message to: {message}")
 
     @commands.hybrid_command(
         name="show_watching",

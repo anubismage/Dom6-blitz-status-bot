@@ -24,7 +24,14 @@ class Dominions(commands.Cog, name="dominions"):
         self.current_status = self.load_dict("current_status.json")
         self.registered_players = self.load_dict("registered_players.json")
         self.custom_turn_message_list = self.load_text_file("turn_messages.txt")
-        self.custom_reminder_message = "Reminder: Less than 12 hours remaining for turn!"
+        self.custom_reminder_message_list = self.load_text_file("reminder_messages.txt")
+
+        # Set default messages if empty
+        if not self.custom_turn_message_list:
+            self.custom_turn_message_list = ["Turn has changed!"]
+
+        if not self.custom_reminder_message_list:
+            self.custom_reminder_message_list = ["Reminder: Less than 12 hours remaining for turn!"]
         
         self.reminder_hrs = 12
         # Start auto-save task
@@ -76,6 +83,7 @@ class Dominions(commands.Cog, name="dominions"):
         self.save_dict(self.current_status, "current_status.json")
         self.save_dict(self.registered_players, "registered_players.json")
         self.save_text_file(self.custom_turn_message_list, "turn_messages.txt")
+        self.save_text_file(self.custom_reminder_message_list, "reminder_messages.txt")
         print(f"Data auto-saved at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     @tasks.loop(minutes=5)
@@ -335,7 +343,8 @@ class Dominions(commands.Cog, name="dominions"):
 
                                 if unregistered_unsubmitted or not mentions:
                                     mentions = "@here"
-                                reminder_msg = f"{self.custom_reminder_message} {mentions}"
+                                message = random.choice(self.custom_reminder_message_list)
+                                reminder_msg = f"{message} {mentions}"
                                 await context.send(reminder_msg, embed=embed)
                                 last_reminder_time = datetime.now()
 
@@ -381,19 +390,18 @@ class Dominions(commands.Cog, name="dominions"):
         await context.send(f"Added to Custom turn messages List: {message}")
 
     @commands.hybrid_command(
-    name="change_reminder_message",
-    description="Sets a custom reminder message for a Dominions game by ID.",
+    name="add_reminder_message",
+    description="Adds a custom reminder message.",
     with_app_command=True
     )
-    async def reminder_message(self, context: Context, message: str) -> None:
+    async def add_reminder_message(self, context: Context, message: str) -> None:
         """
-        Sets a custom reminder message for a Dominions game
+        Adds a custom reminder message
         :param context: The application command context.
-
         :param message: The custom reminder message.
         """
-        self.custom_reminder_message = message
-        await context.send(f"Changed Custom reminder message to: {message}")
+        self.custom_reminder_message_list.append(message)
+        await context.send(f"Added to Custom reminder messages List: {message}")
 
     @commands.hybrid_command(
         name="show_watching",

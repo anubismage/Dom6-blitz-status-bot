@@ -63,7 +63,7 @@ class Dominions(commands.Cog, name="dominions"):
         filepath = os.path.join(self.data_folder, filename)
         try:
             with open(filepath, 'r') as f:
-                return f.readlines()
+                return [line.strip() for line in f.readlines() if line.strip()]
         except FileNotFoundError:
             return []
     
@@ -97,9 +97,9 @@ class Dominions(commands.Cog, name="dominions"):
         self.save_all_data()  # Save one last time when unloading
 
     # Add this helper function at the class level
-    def parse_time_string(self, time_str):
+    def parse_time_string(self, time_str:str):
         """Parse time string and return total hours as float."""
-        if time_str.lower() == "on submission":
+        if (time_str.lower() in "submission") or (time_str.lower() not in "hours"):
             return 0
         
         total_hours = 0

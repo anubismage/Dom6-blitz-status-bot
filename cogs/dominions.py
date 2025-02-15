@@ -302,6 +302,7 @@ class Dominions(commands.Cog, name="dominions"):
                             if not mentions:
                                 mentions = "@here"
                             message = random.choice(self.custom_turn_message_list) if self.custom_turn_message_list else "Turn has changed!"
+                            last_reminder_time = None
                             await context.send(content=f"{message} {mentions}", embed=embed)
 
                         elif next_turn:  # Only check reminder if status hasn't changed

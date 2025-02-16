@@ -315,23 +315,19 @@ class Dominions(commands.Cog, name="dominions"):
 
                         elif next_turn and not last_reminder_time:  # Only check reminder if status hasn't changed
                             hours_remaining = self.parse_time_string(next_turn)
-                            if self.reminder_hrs >= hours_remaining > 0:
+
+                            if hours_remaining < self.reminder_hrs and hours_remaining > 0:
                                 # Send reminder for unsubmitted players
-                                unsubmitted_players = []
-                                unregistered_unsubmitted = False
+                                mentions = ""
                                 for player in players_data:
-                                    if player.get('status', '').lower() != 'unsubmitted':
-                                        continue
-                                        
-                                    nation_name = player.get('nation_name', '')
-                                    player_mention = self.registered_players.get(game_id, {}).get(nation_name)
-                                    
-                                    if player_mention:
-                                        unsubmitted_players.append(player_mention)
-                                    else:
-                                        unregistered_unsubmitted = True
-                                        
-                                mentions = " ".join(unsubmitted_players)
+                                    if player.get('status', '').lower() == 'unsubmitted':
+                                        nation_name = player.get('nation_name', '')
+                                        player_mention = self.registered_players.get(game_id, {}).get(nation_name, '')
+                                        if player_mention:
+                                            mentions = mentions + player_mention
+
+                                if not mentions:
+                                    mentions = "@here"
 
                                 # Send status update
                                 embed = discord.Embed(title=f'Lobby: {lobby_name}', color=0xD75BF4)
@@ -341,8 +337,6 @@ class Dominions(commands.Cog, name="dominions"):
                                 if 'next_turn' in game_info:
                                     embed.add_field(name="Next Turn", value=game_info['next_turn'], inline=False)
 
-                                if unregistered_unsubmitted or not mentions:
-                                    mentions = "@here"
                                 message = random.choice(self.custom_reminder_message_list) if self.custom_reminder_message_list else "Reminder: Less than 12 hours remaining for turn!"
                                 reminder_msg = f"{message} {mentions}"
                                 await context.send(content=reminder_msg, embed=embed)

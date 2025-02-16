@@ -99,7 +99,7 @@ class Dominions(commands.Cog, name="dominions"):
     # Add this helper function at the class level
     def parse_time_string(self, time_str:str):
         """Parse time string and return total hours as float."""
-        if (time_str.lower() in "submission") or (time_str.lower() not in "hours"):
+        if "submission" in time_str.lower() or "hours" not in time_str.lower():
             return 0
         
         total_hours = 0
@@ -290,7 +290,7 @@ class Dominions(commands.Cog, name="dominions"):
                         status_changed = False
                         if game_id not in self.current_status:
                             self.current_status[game_id] = {'status': new_status, 'next_turn': next_turn}
-                            status_changed = True
+                            #status_changed = True
                         elif new_status != self.current_status[game_id]['status']:
                             self.current_status[game_id]['status'] = new_status
                             self.current_status[game_id]['next_turn'] = next_turn
@@ -313,9 +313,9 @@ class Dominions(commands.Cog, name="dominions"):
                             last_reminder_time = None
                             await context.send(content=f"{message} {mentions}", embed=embed)
 
-                        elif next_turn:  # Only check reminder if status hasn't changed
+                        elif next_turn and not last_reminder_time:  # Only check reminder if status hasn't changed
                             hours_remaining = self.parse_time_string(next_turn)
-                            if self.reminder_hrs >= hours_remaining > 0 and not last_reminder_time:
+                            if self.reminder_hrs >= hours_remaining > 0:
                                 # Send reminder for unsubmitted players
                                 unsubmitted_players = []
                                 unregistered_unsubmitted = False
@@ -343,9 +343,9 @@ class Dominions(commands.Cog, name="dominions"):
 
                                 if unregistered_unsubmitted or not mentions:
                                     mentions = "@here"
-                                message = random.choice(self.custom_reminder_message_list)
+                                message = random.choice(self.custom_reminder_message_list) if self.custom_reminder_message_list else "Reminder: Less than 12 hours remaining for turn!"
                                 reminder_msg = f"{message} {mentions}"
-                                await context.send(reminder_msg, embed=embed)
+                                await context.send(content=reminder_msg, embed=embed)
                                 last_reminder_time = datetime.now()
 
 
